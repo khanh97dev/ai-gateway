@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Token Tester</title>
+<style>
+  :root { --bg:#0f1117; --card:#181b24; --line:#262a36; --fg:#e6e8ee; --mut:#8b90a0; --acc:#7c5cff; --ok:#2ecc71; --bad:#ff5c5c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  .wrap { max-width:820px; margin:0 auto; padding:24px 16px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--mut); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  label { color:var(--mut); font-size:13px; }
+  select, textarea, button { font:inherit; color:var(--fg); background:#11131a; border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+  select { min-width:220px; }
+  textarea { width:100%; min-height:90px; resize:vertical; margin-top:8px; }
+  button { background:var(--acc); border:none; color:#fff; cursor:pointer; font-weight:600; }
+  button.ghost { background:#11131a; border:1px solid var(--line); color:var(--fg); font-weight:500; }
+  button:disabled { opacity:.5; cursor:default; }
+  .pill { padding:3px 9px; border-radius:20px; font-size:12px; font-weight:600; }
+  .pill.ok { background:rgba(46,204,113,.15); color:var(--ok); }
+  .pill.bad { background:rgba(255,92,92,.15); color:var(--bad); }
+  .health-item { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--line); font-size:14px; }
+  .health-item:first-child { border-top:none; }
+  .health-item .st { color:var(--mut); font-size:12px; max-width:60%; text-align:right; word-break:break-word; }
+  .out { white-space:pre-wrap; background:#11131a; border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:12px; min-height:40px; }
+  .meta { color:var(--mut); font-size:12px; margin-top:6px; }
+  .err { color:var(--bad); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI Token Tester</h1>
+  <p class="sub">Thử nghiệm các API key đã đăng ký. Key nằm ở server, không lộ ra trình duyệt.</p>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <strong>Trạng thái key</strong>
+      <button class="ghost" id="btnHealth">Test tất cả key</button>
+    </div>
+    <div id="health"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label>Provider</label>
+      <select id="provider"></select>
+      <label>Model</label>
+      <select id="model"></select>
+    </div>
+    <textarea id="prompt" placeholder="Nhập câu hỏi để test...">Chào! Trả lời ngắn gọn: 2+2 bằng mấy?</textarea>
+    <div class="row" style="justify-content:space-between; margin-top:8px">
+      <span class="meta" id="hint"></span>
+      <button id="btnSend">Gửi</button>
+    </div>
+    <div class="out" id="out"></div>
+    <div class="meta" id="outMeta"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (p, o) => fetch(p, o).then(r => r.json());
+
+async function loadProviders() {
+  const provs = await api('/api/providers');
+  $('#provider').innerHTML = provs.map(p => `<option>${p}</option>`).join('');
+  await loadModels();
+}
+async function loadModels() {
+  const prov = $('#provider').value;
+  $('#model').innerHTML = '<option>đang tải...</option>';
+  const models = await api('/api/models?provider=' + prov);
+  $('#model').innerHTML = models.length ? models.map(m => `<option>${m}</option>`).join('') : '<option value="">(không có)</option>';
+  $('#hint').textContent = models.length + ' model';
+}
+async function health() {
+  $('#health').innerHTML = '<div class="meta" style="padding-top:8px">đang test...</div>';
+  const h = await api('/api/health');
+  $('#health').innerHTML = Object.entries(h).map(([name, v]) =>
+    `<div class="health-item"><span>${name} <span class="pill ${v.ok?'ok':'bad'}">${v.ok?'OK':'FAIL'}</span></span><span class="st">${v.status}</span></div>`
+  ).join('');
+}
+async function send() {
+  const body = { provider: $('#provider').value, model: $('#model').value, prompt: $('#prompt').value };
+  $('#out').textContent = '...'; $('#outMeta').textContent = ''; $('#btnSend').disabled = true;
+  try {
+    const r = await api('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (r.error) { $('#out').innerHTML = '<span class="err">Lỗi: ' + r.error + '</span>'; }
+    else { $('#out').textContent = r.text; $('#outMeta').textContent = `model: ${r.model} · tokens: ${r.tokens}`; }
+  } catch (e) { $('#out').innerHTML = '<span class="err">' + e.message + '</span>'; }
+  $('#btnSend').disabled = false;
+}
+$('#provider').onchange = loadModels;
+$('#btnHealth').onclick = health;
+$('#btnSend').onclick = send;
+loadProviders();
+</script>
+</body>
+</html>
